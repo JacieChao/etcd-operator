@@ -17,6 +17,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"github.com/coreos/etcd-operator/pkg/backup/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 	"reflect"
 	"time"
 
@@ -107,6 +109,10 @@ func (b *Backup) processItem(key string) error {
 
 	} else if !isPeriodic {
 		// Perform backup
+		metrics.BackupsAttemptedTotal.With(prometheus.Labels(prometheus.Labels{
+			"namespace": eb.ObjectMeta.Namespace,
+			"name":      eb.ObjectMeta.Name,
+		})).Inc()
 		bs, err := b.handleBackup(nil, &eb.Spec, false)
 		// Report backup status
 		b.reportBackupStatus(bs, err, eb)
@@ -213,6 +219,14 @@ func (b *Backup) reportBackupStatus(bs *api.BackupStatus, berr error, eb *api.Et
 		eb.Status.EtcdRevision = bs.EtcdRevision
 		eb.Status.EtcdVersion = bs.EtcdVersion
 		eb.Status.LastSuccessDate = bs.LastSuccessDate
+		metrics.BackupsSuccessTotal.With(prometheus.Labels(prometheus.Labels{
+			"namespace": eb.ObjectMeta.Namespace,
+			"name":      eb.ObjectMeta.Name,
+		})).Inc()
+		metrics.BackupsLastSuccess.With(prometheus.Labels(prometheus.Labels{
+			"namespace": eb.ObjectMeta.Namespace,
+			"name":      eb.ObjectMeta.Name,
+		})).Set(float64(time.Now().Unix()))
 	}
 	_, err := b.backupCRCli.EtcdV1beta2().EtcdBackups(b.namespace).Update(eb)
 	if err != nil {
